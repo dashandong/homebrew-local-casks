@@ -1,0 +1,120 @@
+name: Update eudic cask
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Firday at 09:20 UTC
+    - cron: "20 9 * * 5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-eudic
+  cancel-in-progress: true
+
+jobs:
+  update-eudic:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read current version from cask
+        id: current
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version="$(
+            ruby -e 'text = File.read("Casks/eudic.rb"); m = text.match(/version\s+"([^"]+)"/); abort("version not found") unless m; puts m[1]'
+          )"
+          echo "version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "Current version: $current_version"
+
+      - name: Fetch latest version from Eudic download page
+        id: latest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          page="$(curl -fsL "https://www.eudic.net/v4/en/app/download")"
+
+          latest_version="$(
+            printf '%s' "$page" | ruby -e '
+              page = STDIN.read
+              m = page.match(%r{https://static\.frdic\.com/pkg/eudicmac\.dmg\?v=(\d{4}-\d{2}-\d{2})}i)
+              abort("Failed to parse latest version from download page") unless m
+              puts m[1].tr("-", ".")
+            '
+          )"
+
+          echo "version=$latest_version" >> "$GITHUB_OUTPUT"
+          echo "Latest version: $latest_version"
+
+      - name: Stop if already up to date
+        if: steps.current.outputs.version == steps.latest.outputs.version
+        shell: bash
+        run: |
+          echo "Cask is already up to date."
+
+      - name: Build download URL
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        id: url
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="${{ steps.latest.outputs.version }}"
+          latest_hyphen="$(echo "$latest" | tr '.' '-')"
+          download_url="https://static.frdic.com/pkg/eudicmac.dmg?v=${latest_hyphen}"
+          echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
+          echo "Download URL: $download_url"
+
+      - name: Download DMG and compute sha256
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "${{ steps.url.outputs.download_url }}" -o /tmp/eudicmac.dmg
+          sha256="$(shasum -a 256 /tmp/eudicmac.dmg | awk '{print $1}')"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $sha256"
+
+      - name: Update cask file
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        env:
+          NEW_VERSION: ${{ steps.latest.outputs.version }}
+          NEW_SHA256: ${{ steps.sha.outputs.sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          path = "Casks/eudic.rb"
+          text = File.read(path)
+
+          text.sub!(/version\s+"[^"]+"/, %{version "#{ENV.fetch("NEW_VERSION")}"})
+          text.sub!(/sha256\s+"[0-9a-f]{64}"/, %{sha256 "#{ENV.fetch("NEW_SHA256")}"})
+
+          File.write(path, text)
+          RUBY
+
+      - name: Show diff
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        shell: bash
+        run: |
+          git diff -- Casks/eudic.rb
+
+      - name: Commit and push
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "dashandong"
+          git config user.email "ddsh0205@gmail.com"
+
+          git add Casks/eudic.rb
+
+          git commit -m "eudic ${{ steps.latest.outputs.version }}"
+          git push
