@@ -1,0 +1,94 @@
+name: Update eudic cask
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Firday at 09:20 UTC
+    - cron: "20 9 * * 5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-eudic
+  cancel-in-progress: true
+
+jobs:
+  update-eudic:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out tap repository
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Read current version from cask
+        id: current
+        run: |
+          current_version="$(
+            ruby -e 'text=File.read("Casks/eudic.rb"); puts text[/version\s+"([^"]+)"/, 1]'
+          )"
+          echo "version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "Current version: $current_version"
+
+      - name: Get latest version from livecheck
+        id: livecheck
+        run: |
+          latest_version="$(
+            brew livecheck --json ./Casks/eudic.rb \
+            | ruby -rjson -e 'data = JSON.parse(STDIN.read); puts data[0]["version"]["latest"]'
+          )"
+          echo "version=$latest_version" >> "$GITHUB_OUTPUT"
+          echo "Latest version: $latest_version"
+
+      - name: Stop when already up to date
+        if: steps.current.outputs.version == steps.livecheck.outputs.version
+        run: |
+          echo "Cask is already up to date."
+          exit 0
+
+      - name: Download latest DMG and compute sha256
+        id: artifact
+        run: |
+          latest="${{ steps.livecheck.outputs.version }}"
+          latest_hyphen="$(echo "$latest" | tr '.' '-')"
+          download_url="https://static.frdic.com/pkg/eudicmac.dmg?v=${latest_hyphen}"
+
+          echo "url=$download_url" >> "$GITHUB_OUTPUT"
+
+          curl -fL "$download_url" -o /tmp/eudicmac.dmg
+          sha="$(shasum -a 256 /tmp/eudicmac.dmg | awk '{print $1}')"
+
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "Download URL: $download_url"
+          echo "SHA256: $sha"
+
+      - name: Update cask file
+        env:
+          NEW_VERSION: ${{ steps.livecheck.outputs.version }}
+          NEW_SHA256: ${{ steps.artifact.outputs.sha256 }}
+        run: |
+          ruby <<'RUBY'
+          path = "Casks/eudic.rb"
+          text = File.read(path)
+
+          text.sub!(/version\s+"[^"]+"/, %{version "#{ENV.fetch("NEW_VERSION")}"})
+          text.sub!(/sha256\s+"[0-9a-f]{64}"/, %{sha256 "#{ENV.fetch("NEW_SHA256")}"})
+
+          File.write(path, text)
+          RUBY
+
+      - name: Verify changes
+        run: git diff -- Casks/eudic.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "dashandong"
+          git config user.email "ddsh0205@gmail.com"
+
+          git add Casks/eudic.rb
+
+          git commit -m "eudic ${{ steps.livecheck.outputs.version }}" || exit 0
+          git push
