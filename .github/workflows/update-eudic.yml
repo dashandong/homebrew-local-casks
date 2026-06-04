@@ -43,7 +43,7 @@ jobs:
           latest_version="$(
             printf '%s' "$page" | ruby -e '
               page = STDIN.read
-              m = page.match(%r{https://static\.frdic\.com/pkg/eudicmac\.dmg\?v=(\d{4}-\d{2}-\d{2})}i)
+              m = page.match(%r{https://static\.eudic\.net/pkg/eudicmac\.dmg\?v=(\d{4}-\d{2}-\d{2})}i)
               abort("Failed to parse latest version from download page") unless m
               puts m[1].tr("-", ".")
             '
@@ -66,7 +66,7 @@ jobs:
           set -euo pipefail
           latest="${{ steps.latest.outputs.version }}"
           latest_hyphen="$(echo "$latest" | tr '.' '-')"
-          download_url="https://static.frdic.com/pkg/eudicmac.dmg?v=${latest_hyphen}"
+          download_url="https://static.eudic.net/pkg/eudicmac.dmg?v=${latest_hyphen}"
           echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
           echo "Download URL: $download_url"
 
