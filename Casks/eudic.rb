@@ -2,7 +2,7 @@ cask "eudic" do
   version "2026.04.22"
   sha256 "c7b4981233e368a699528765bc7daec6461433b7c225402777e5834cf0088da5"
 
-  url "https://static.frdic.com/pkg/eudicmac.dmg?v=#{version.dots_to_hyphens}",
+  url "https://static.eudic.net/pkg/eudicmac.dmg?v=#{version.dots_to_hyphens}",
       verified:   "static.frdic.com/pkg/",
       user_agent: :fake
 
@@ -14,7 +14,7 @@ cask "eudic" do
   livecheck do
     url :homepage
     strategy :page_match do |page|
-      page.scan(%r{https://static\.frdic\.com/pkg/eudicmac\.dmg\?v=(\d{4}-\d{2}-\d{2})}i)
+      page.scan(%r{https://static\.eudic\.net/pkg/eudicmac\.dmg\?v=(\d{4}-\d{2}-\d{2})}i)
           .flatten
           .map { |v| v.tr("-", ".") }
     end
