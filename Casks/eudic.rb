@@ -1,5 +1,5 @@
 cask "eudic" do
-  version "2026.09.02"
+  version "2026.09.09"
   sha256 "8f4621edb79f75e6d33904a1290392606bf4bebe936fa9b288fad41db4836f69"
 
   url "https://static.eudic.net/pkg/eudicmac.dmg?v=#{version.dots_to_hyphens}",
